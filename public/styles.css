@@ -85,7 +85,7 @@ input:focus, select:focus {
 }
 
 .results, .suggestions { display: grid; gap: 8px; padding: 0; list-style: none; }
-.result, .suggestion, .review-card {
+.result, .suggestion {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -96,12 +96,12 @@ input:focus, select:focus {
 }
 
 .result strong, .suggestion strong, .review-card > strong { display: block; }
-.result small, .suggestion small, .review-card small {
+.result small, .suggestion small {
   display: block;
   margin-top: 4px;
   color: #66766d;
 }
-.review { color: #8a4b12 !important; }
+.pending { color: #8a4b12 !important; }
 
 .button {
   width: 100%;
@@ -126,9 +126,6 @@ input:focus, select:focus {
 .message { min-height: 1.2em; margin-bottom: 0; }
 .message.error { color: #a32e23; }
 .message.success { color: #17603d; }
-.review-card { align-items: stretch; flex-direction: column; }
-.review-card input { min-height: 40px; }
-.review-actions { display: flex; gap: 8px; }
 footer { padding: 14px 4px; color: #607068; font-size: 0.85rem; }
 
 @media (max-width: 520px) {

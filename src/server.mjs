@@ -208,33 +208,12 @@ export function createApp({
         return json(response, 200, body, { ETag: etag, 'Cache-Control': 'no-cache' });
       }
 
-      if (request.method === 'GET' && url.pathname === '/api/references/review') {
-        requireRole(session, [roles.coordinator, roles.administrator]);
-        return json(response, 200, catalog.pendingReview());
-      }
-
-      const reviewMatch = url.pathname.match(/^\/api\/references\/([^/]+)\/review$/);
-      if (request.method === 'POST' && reviewMatch) {
-        requireRole(session, [roles.coordinator, roles.administrator]);
-        const input = await readBody(request);
-        if (!input || typeof input !== 'object' || Array.isArray(input)) {
-          return json(response, 400, { message: 'Envía la decisión de revisión.' });
-        }
-        const result = catalog.reviewReference({
-          referenceId: decodeURIComponent(reviewMatch[1]),
-          decision: input.decision,
-          note: input.note ?? '',
-          reviewerId: session.id,
-        });
-        return json(response, result.status, result.body);
-      }
-
       if (request.method === 'POST' && url.pathname === '/api/references/from-mobile') {
         requireRole(session, [roles.operator, roles.coordinator, roles.administrator]);
         const input = await readBody(request);
         const invalid = validateCreate(input);
         if (invalid) return json(response, 400, { message: invalid });
-        const result = catalog.createFromMobile(input, bankId, session.id);
+        const result = catalog.createFromMobile(input, bankId);
         return json(response, result.status, result.body, {
           ...(result.replay ? { 'Idempotent-Replay': 'true' } : {}),
         });

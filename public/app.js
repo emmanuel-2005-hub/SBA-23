@@ -21,8 +21,6 @@ const elements = {
   createButton: document.querySelector('#create-button'),
   queuePanel: document.querySelector('#queue-panel'),
   queueList: document.querySelector('#queue-list'),
-  reviewPanel: document.querySelector('#review-panel'),
-  reviewList: document.querySelector('#review-list'),
   usersPanel: document.querySelector('#users-panel'),
   userForm: document.querySelector('#user-form'),
   userMessage: document.querySelector('#user-message'),
@@ -165,7 +163,6 @@ function setAuthenticated(user, token, offline = false) {
   elements.identity.hidden = false;
   elements.identity.textContent = `${user.name} · ${roleNames[user.role]}`;
   elements.logout.hidden = false;
-  elements.reviewPanel.hidden = !['coordinacion', 'admin_banco'].includes(user.role);
   elements.usersPanel.hidden = user.role !== 'admin_banco';
   setConnection();
   void refreshWorkspace();
@@ -195,10 +192,8 @@ async function refreshWorkspace() {
     loadProducts(),
     loadCatalog(),
     loadQueue(),
-    ...(elements.reviewPanel.hidden ? [] : [loadReview()]),
     ...(elements.usersPanel.hidden ? [] : [loadUsers()]),
   ]);
-  await syncQueue();
 }
 
 async function initializeSession() {
@@ -304,14 +299,9 @@ function renderResults(items) {
     info.append(name, detail);
     if (item.pendingSync) {
       const pending = document.createElement('small');
-      pending.className = 'review';
-      pending.textContent = 'Pendiente de sincronizar';
+      pending.className = 'pending';
+      pending.textContent = 'Borrador local · pendiente de sincronizar';
       info.append(pending);
-    } else if (item.reviewStatus === 'pending') {
-      const review = document.createElement('small');
-      review.className = 'review';
-      review.textContent = 'Pendiente de revisión';
-      info.append(review);
     }
     row.append(info);
     elements.results.append(row);
@@ -361,7 +351,7 @@ async function suggestSimilar() {
   }
 }
 
-async function saveForSync(payload) {
+async function saveDraft(payload) {
   const product = JSON.parse(localStorage.getItem('products') ?? '[]')
     .find((item) => item.id === payload.productId);
   if (!product) throw new Error('No encontramos el producto guardado para esta alta.');
@@ -374,7 +364,6 @@ async function saveForSync(payload) {
     presentation: payload.presentation,
     equivalenceKg: payload.equivalenceKg,
     createdFromMobile: true,
-    reviewStatus: 'pending',
     active: true,
     pendingSync: true,
   };
@@ -392,7 +381,7 @@ async function saveForSync(payload) {
   return command;
 }
 
-async function syncCommand(command, retrying = false) {
+async function submitCommand(command, retrying = false) {
   if (!currentUser || command.ownerId !== currentUser.id || command.state === 'blocked') return;
   try {
     await api('/api/references/from-mobile', { method: 'POST', body: command.payload });
@@ -414,7 +403,7 @@ async function syncCommand(command, retrying = false) {
         const session = await api('/api/auth/session');
         if (session.user.id === currentUser?.id) {
           csrfToken = session.csrfToken;
-          await syncCommand(command, true);
+          await submitCommand(command, true);
           return;
         }
       } catch (refreshError) {
@@ -436,27 +425,14 @@ async function syncCommand(command, retrying = false) {
     if (!error.status) {
       setMessage(
         elements.message,
-        'Sin conexión con el servidor. La presentación sigue guardada y se reintentará automáticamente.',
-        'success',
+        'No respondió el servidor. La presentación sigue pendiente en este dispositivo; la cola completa se implementará en la iteración 3.',
+        'error',
       );
       await loadQueue();
       return;
     }
-    if (error.status && error.status !== 401 && error.status !== 403) {
-      await savePendingCommand({ ...command, state: 'blocked', error: error.message });
-      setMessage(elements.message, `${error.message} Puedes quitarla de la cola para descartarla.`, 'error');
-      await loadQueue();
-    }
-  }
-}
-
-async function syncQueue() {
-  if (!navigator.onLine || !serverAvailable || !currentUser || !csrfToken) return;
-  const commands = await getPendingCommands();
-  for (const command of commands) {
-    if (command.ownerId === currentUser.id && command.state === 'pending') {
-      await syncCommand(command);
-    }
+    setMessage(elements.message, error.message, 'error');
+    await loadQueue();
   }
 }
 
@@ -474,78 +450,24 @@ async function loadQueue() {
       const title = document.createElement('strong');
       title.textContent = `${command.reference.product} · ${command.reference.presentation}`;
       const detail = document.createElement('small');
-      detail.textContent = command.state === 'blocked'
-        ? command.error
-        : (navigator.onLine && serverAvailable ? 'Esperando sincronización' : 'Pendiente de sincronizar');
+      detail.textContent = 'Pendiente de sincronizar · la cola completa llega en la iteración 3.';
       info.append(title, detail);
       row.append(info);
-      if (command.state === 'blocked') {
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'button small secondary';
-        remove.textContent = 'Quitar de la cola';
-        remove.addEventListener('click', async () => {
-          await deletePendingCommand(command.commandId);
-          await renderCatalog(JSON.parse(localStorage.getItem('catalog') ?? '[]'), elements.search.value);
-          await loadQueue();
-        });
-        row.append(remove);
-      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'button small secondary';
+      remove.textContent = 'Quitar borrador';
+      remove.addEventListener('click', async () => {
+        await deletePendingCommand(command.commandId);
+        await renderCatalog(JSON.parse(localStorage.getItem('catalog') ?? '[]'), elements.search.value);
+        await loadQueue();
+      });
+      row.append(remove);
       elements.queueList.append(row);
     }
   } catch (error) {
     elements.queuePanel.hidden = false;
     elements.queueList.textContent = `No se pudo leer la cola local: ${error.message}`;
-  }
-}
-
-async function loadReview() {
-  try {
-    const references = await api('/api/references/review');
-    elements.reviewList.replaceChildren();
-    if (!references.length) {
-      elements.reviewList.textContent = 'No hay presentaciones pendientes.';
-      return;
-    }
-    for (const reference of references) {
-      const row = document.createElement('li');
-      row.className = 'review-card';
-      const title = document.createElement('strong');
-      title.textContent = `${reference.product} · ${reference.presentation}`;
-      const detail = document.createElement('small');
-      detail.textContent = `${reference.equivalenceKg} kg · Creada ${new Date(reference.createdAt).toLocaleString()}${reference.createdBy ? ` · Por ${reference.createdBy}` : ''}`;
-      const note = document.createElement('input');
-      note.maxLength = 500;
-      note.placeholder = 'Nota opcional (máximo 500 caracteres)';
-      note.setAttribute('aria-label', `Nota para ${reference.presentation}`);
-      const actions = document.createElement('div');
-      actions.className = 'review-actions';
-      for (const [decision, label] of [['approve', 'Aprobar'], ['reject', 'Rechazar']]) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = decision === 'approve' ? 'button small' : 'button small danger';
-        button.textContent = label;
-        button.addEventListener('click', async () => {
-          button.disabled = true;
-          try {
-            await api(`/api/references/${encodeURIComponent(reference.id)}/review`, {
-              method: 'POST',
-              body: { decision, note: note.value },
-            });
-            await Promise.all([loadReview(), loadCatalog()]);
-          } catch (error) {
-            setMessage(elements.message, error.message, 'error');
-          } finally {
-            button.disabled = false;
-          }
-        });
-        actions.append(button);
-      }
-      row.append(title, detail, note, actions);
-      elements.reviewList.append(row);
-    }
-  } catch (error) {
-    elements.reviewList.textContent = error.message;
   }
 }
 
@@ -639,7 +561,6 @@ elements.search.addEventListener('input', () => {
 });
 
 document.querySelector('#suggest-button').addEventListener('click', suggestSimilar);
-document.querySelector('#review-refresh').addEventListener('click', loadReview);
 
 elements.createForm.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -652,11 +573,18 @@ elements.createForm.addEventListener('submit', async (event) => {
     equivalenceKg: Number(elements.equivalence.value),
   };
   try {
-    const command = await saveForSync(payload);
-    if (navigator.onLine && csrfToken) await syncCommand(command);
-    else setMessage(elements.message, 'Guardada en este dispositivo. Se sincronizará al recuperar la conexión.', 'success');
-    elements.createForm.reset();
-    elements.suggestions.replaceChildren();
+    const command = await saveDraft(payload);
+    if (navigator.onLine && serverAvailable && csrfToken) {
+      await submitCommand(command);
+      const stillPending = (await getPendingCommands())
+        .some((item) => item.commandId === command.commandId);
+      if (!stillPending) {
+        elements.createForm.reset();
+        elements.suggestions.replaceChildren();
+      }
+    } else {
+      setMessage(elements.message, 'Presentación guardada como borrador local. La sincronización completa llega en la iteración 3.', 'success');
+    }
   } catch (error) {
     setMessage(elements.message, error.message, 'error');
   } finally {
@@ -689,7 +617,7 @@ window.addEventListener('online', async () => {
       return;
     }
     sessionStorage.removeItem('offlineUser');
-    showLogin(false, 'La sesión expiró. Inicia sesión para sincronizar los cambios guardados.');
+    showLogin(false, 'La sesión expiró. Inicia sesión para continuar.');
   }
 });
 window.addEventListener('offline', setConnection);
@@ -701,7 +629,7 @@ setInterval(async () => {
   } catch (error) {
     if (error.status === 401) {
       sessionStorage.removeItem('offlineUser');
-      showLogin(false, 'La sesión expiró. Inicia sesión para sincronizar los cambios guardados.');
+      showLogin(false, 'La sesión expiró. Inicia sesión para continuar.');
     }
   }
 }, 15_000);

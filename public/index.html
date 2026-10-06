@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#155b49">
-    <meta name="description" content="Catálogo de bodega con acceso por roles y modo sin conexión.">
+    <meta name="description" content="Busca y crea presentaciones de productos desde el catálogo local.">
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/styles.css">
     <title>Catálogo de bodega</title>
@@ -13,7 +13,7 @@
     <main class="page">
       <header class="header">
         <div>
-          <p class="eyebrow">CATÁLOGO LOCAL · BODEGA</p>
+          <p class="eyebrow">CATÁLOGO · BODEGA</p>
           <h1>Catálogo</h1>
           <p class="subtitle">Busca presentaciones o crea una para un producto existente.</p>
         </div>
@@ -53,7 +53,7 @@
 
       <div id="workspace" hidden>
         <p id="offline-notice" class="notice" role="status" hidden>
-          Sin conexión al servidor. Puedes consultar el catálogo y dejar altas en cola; se enviarán al reconectar.
+          Sin conexión al servidor. Puedes consultar el catálogo; las altas quedan como borradores locales.
         </p>
 
         <section class="panel" aria-labelledby="search-title">
@@ -86,16 +86,9 @@
         </section>
 
         <section id="queue-panel" class="panel" aria-labelledby="queue-title" hidden>
-          <h2 id="queue-title">Altas por sincronizar</h2>
-          <p class="hint">Los comandos conservan su identificador para que un reintento no duplique la presentación.</p>
+          <h2 id="queue-title">Altas pendientes</h2>
+          <p class="hint">Se conserva el UUID y la referencia provisional. El reintento y la reconciliación completos corresponden a la iteración 3.</p>
           <ul id="queue-list" class="results"></ul>
-        </section>
-
-        <section id="review-panel" class="panel" aria-labelledby="review-title" hidden>
-          <h2 id="review-title">Revisión de coordinación</h2>
-          <p class="hint">Las presentaciones nuevas ya están disponibles. Revisa y aprueba o desactiva cada alta.</p>
-          <button id="review-refresh" class="button secondary" type="button">Actualizar pendientes</button>
-          <ul id="review-list" class="results"></ul>
         </section>
 
         <section id="users-panel" class="panel" aria-labelledby="users-title" hidden>

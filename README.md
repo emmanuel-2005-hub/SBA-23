@@ -24,17 +24,23 @@ $env:PORT = "3000"
 npm start
 ```
 
-## Funciones
+## SBA-23
 
-- Inicio de sesión local con contraseñas derivadas mediante scrypt, sesiones aleatorias almacenadas como hashes y cookies `HttpOnly`/`SameSite=Strict`. Las mutaciones requieren token CSRF.
-- Roles: `operario_bodega` puede consultar y crear; `coordinacion` puede revisar altas; `admin_banco` también puede crear y desactivar cuentas. No se puede desactivar la última cuenta administradora.
 - Búsqueda por nombre, presentación, categoría o código; ignora mayúsculas y tildes.
-- Alta de presentaciones solo para productos existentes. Compara nombre normalizado o equivalencia en kilos, evita duplicados y deja la presentación disponible de inmediato, marcada para revisión.
-- Idempotencia con UUIDv7, hash SHA-256 y clave única por banco/comando; la referencia y el resultado quedan persistidos en una transacción SQLite.
-- Panel de coordinación para aprobar o rechazar altas. Rechazar desactiva la presentación; aprobar la conserva activa. Ambas acciones guardan quién revisó, cuándo y una nota opcional.
-- Cola local en IndexedDB para altas cuando no hay conexión. Al recuperar la conexión, reintenta el mismo comando para evitar duplicados y reconcilia el identificador provisional con la respuesta del servidor. Las altas no sincronizadas se muestran en el catálogo de ese dispositivo.
-- PWA con caché de la aplicación y del catálogo para consultar sin conexión. La cola queda en el navegador; una presentación creada sin señal todavía no está guardada en la base del servidor.
-- Las sesiones expiran después de 12 horas. Para sincronizar, vuelve a conectarte e inicia sesión con una cuenta activa.
+- Sugerencias para el mismo producto cuando coincide la presentación normalizada o la equivalencia en kilos.
+- Alta desde el celular solo para productos existentes. La presentación queda activa y marcada con `createdFromMobile`.
+- Idempotencia con UUIDv7, hash SHA-256 y clave única por banco/comando. La referencia y el resultado quedan guardados en una transacción SQLite; un reintento idéntico devuelve el resultado anterior y un comando reutilizado con otra carga responde `409`.
+- Una clave de referencia provisional UUIDv7 y una estructura de borrador local para preparar el flujo de sincronización; el ID provisional se sustituye por el ID real al responder la API.
+- PWA con caché de la aplicación y del catálogo para consulta sin conexión.
+
+La autenticación incluida es local y usa los roles `operario_bodega`, `coordinacion` y `admin_banco` como sustituto de demostración. No es Auth0 ni forma parte de la entrega real de SBA-23 (Auth0 corresponde a SBA-8). Las presentaciones nuevas quedan disponibles de inmediato: no se agregó pantalla de revisión.
+
+## Fuera del alcance de SBA-23
+
+- La cola completa, los reintentos automáticos y la reconciliación de identificadores sin conexión pertenecen a la iteración 3. Mientras no haya conexión, la aplicación conserva un borrador local; no lo envía automáticamente al reconectar.
+- La recepción y el registro de cantidades corresponden a SBA-24 y no están implementados aquí.
+- La pantalla de revisión de coordinación es un ticket aparte.
+- No se implementa Auth0, ni integración con SIGBA, NestJS, Prisma, Postgres o su catálogo real. La base SQLite y los datos de ejemplo son locales y sintéticos.
 
 ## API local
 
@@ -44,7 +50,6 @@ npm start
 - `GET /api/products`, `GET /api/search?q=arr`, `GET /api/catalog`.
 - `GET /api/references/suggestions?productId=prod-arroz&presentation=500%20g&equivalenceKg=0.5`.
 - `POST /api/references/from-mobile`.
-- `GET /api/references/review` y `POST /api/references/:id/review` (coordinación o administración).
 
 Las rutas de catálogo requieren sesión. El alta recibe `commandId`, `productId`, `presentation` y `equivalenceKg`; la API devuelve `201` la primera vez, `200` en un reintento idéntico y `409` si se reutiliza el comando con otra carga o si ya existe una presentación equivalente.
 
@@ -54,6 +59,6 @@ Las rutas de catálogo requieren sesión. El alta recibe `commandId`, `productId
 npm test
 ```
 
-## Alcance y uso
+## Uso
 
-Este proyecto adapta el flujo a una instalación local: no implementa NestJS, Prisma, Postgres, Auth0, integración con recepciones, sincronización entre varios dispositivos ni conexión al catálogo real. La autenticación local y los paneles de revisión/cola se añadieron a petición para completar la demostración independiente, aunque aparecen fuera del alcance de SBA-23 en el PDF. Antes de usarlo con datos reales, requiere una revisión de seguridad y operación, HTTPS, copias de seguridad, gestión segura de cuentas y adaptación a la infraestructura de la organización.
+Este es un prototipo local para el flujo de creación de presentaciones de SBA-23. Antes de usarlo con datos reales, hace falta integrarlo con la infraestructura y los servicios autorizados de la organización.

@@ -17,7 +17,6 @@ describe('catálogo independiente', () => {
   let app;
   let admin;
   let operator;
-  let coordinator;
 
   beforeEach(async () => {
     folder = mkdtempSync(join(tmpdir(), 'catalogo-test-'));
@@ -33,12 +32,6 @@ describe('catálogo independiente', () => {
       email: 'operario@example.test',
       password: 'Operario-local-2026!',
       role: 'operario_bodega',
-    });
-    coordinator = await addAccount(baseUrl, admin, {
-      name: 'Coordinación',
-      email: 'coordinacion@example.test',
-      password: 'Coordinacion-local-2026!',
-      role: 'coordinacion',
     });
   });
 
@@ -78,17 +71,15 @@ describe('catálogo independiente', () => {
     assert.deepEqual((await response.json()).map((item) => item.presentation), ['500 g']);
   });
 
-  it('crea una presentación disponible y marcada para revisión', async () => {
+  it('crea una presentación activa y disponible en el catálogo', async () => {
     const response = await createReference(operator, '0.48', 'paquete de 480 g');
     const body = await response.json();
     assert.equal(response.status, 201);
     assert.equal(body.createdFromMobile, true);
     assert.equal(body.active, true);
-    assert.equal(body.reviewStatus, 'pending');
+    assert.equal(typeof body.id, 'string');
     const search = await request(operator, '/api/search?q=480');
     assert.equal((await search.json()).length, 1);
-    const pending = await request(coordinator, '/api/references/review');
-    assert.equal((await pending.json()).length, 1);
   });
 
   it('devuelve el mismo resultado al reintentar el mismo comando', async () => {
@@ -144,45 +135,8 @@ describe('catálogo independiente', () => {
     assert.equal(second.status, 304);
   });
 
-  it('solo permite que coordinación y administración revisen altas', async () => {
-    const created = await createReference(operator, '0.48', 'paquete 480 g');
-    const reference = await created.json();
-    const forbidden = await request(operator, '/api/references/review');
-    assert.equal(forbidden.status, 403);
-
-    const denied = await post(operator, `/api/references/${reference.id}/review`, {
-      decision: 'approve',
-    });
-    assert.equal(denied.status, 403);
-
-    const approved = await post(coordinator, `/api/references/${reference.id}/review`, {
-      decision: 'approve',
-      note: 'Presentación verificada.',
-    });
-    assert.deepEqual(await approved.json(), {
-      id: reference.id,
-      decision: 'approve',
-      active: true,
-    });
-    const pending = await request(coordinator, '/api/references/review');
-    assert.deepEqual(await pending.json(), []);
-  });
-
-  it('desactiva una presentación rechazada', async () => {
-    const created = await createReference(operator, '0.48', 'paquete 480 g');
-    const reference = await created.json();
-    const rejected = await post(admin, `/api/references/${reference.id}/review`, {
-      decision: 'reject',
-      note: 'No corresponde al producto.',
-    });
-    assert.equal(rejected.status, 200);
-    assert.equal((await rejected.json()).active, false);
-    const search = await request(operator, '/api/search?q=480');
-    assert.deepEqual(await search.json(), []);
-  });
-
   it('solo administración puede crear y listar cuentas', async () => {
-    const forbidden = await post(coordinator, '/api/admin/users', {
+    const forbidden = await post(operator, '/api/admin/users', {
       name: 'Otra persona',
       email: 'otra@example.test',
       password: 'Otra-persona-2026!',
@@ -198,7 +152,7 @@ describe('catálogo independiente', () => {
     assert.equal(created.status, 201);
     assert.equal((await created.json()).role, 'operario_bodega');
     const list = await request(admin, '/api/admin/users');
-    assert.equal((await list.json()).length, 4);
+    assert.equal((await list.json()).length, 3);
   });
 
   it('permite desactivar cuentas y revoca sus sesiones', async () => {

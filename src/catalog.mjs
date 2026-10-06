@@ -39,11 +39,6 @@ export function createCatalog(database) {
       equivalence_kg REAL NOT NULL CHECK (equivalence_kg > 0),
       created_from_mobile INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
-      review_status TEXT NOT NULL DEFAULT 'approved',
-      reviewed_at TEXT,
-      reviewer_id TEXT,
-      review_note TEXT,
-      created_by TEXT,
       created_at TEXT NOT NULL,
       UNIQUE (product_id, presentation_key)
     );
@@ -59,11 +54,6 @@ export function createCatalog(database) {
     database.prepare('PRAGMA table_info(references_catalog)').all().map((column) => column.name),
   );
   for (const [name, declaration] of [
-    ['review_status', "TEXT NOT NULL DEFAULT 'approved'"],
-    ['reviewed_at', 'TEXT'],
-    ['reviewer_id', 'TEXT'],
-    ['review_note', 'TEXT'],
-    ['created_by', 'TEXT'],
     ['bank_id', 'TEXT'],
     ['command_id', 'TEXT'],
     ['payload_hash', 'TEXT'],
@@ -112,8 +102,6 @@ export function createCatalog(database) {
   }
 
   database.exec(`
-    CREATE INDEX IF NOT EXISTS references_pending_review
-      ON references_catalog(review_status, created_from_mobile, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS references_command_key
       ON references_catalog(bank_id, command_id) WHERE command_id IS NOT NULL;
   `);
@@ -166,7 +154,6 @@ export function createCatalog(database) {
         SELECT r.id, r.product_id AS productId, p.name AS product,
           r.presentation, r.equivalence_kg AS equivalenceKg,
           r.created_from_mobile AS createdFromMobile, r.active,
-          r.review_status AS reviewStatus,
           c.name AS category, c.bank_code AS bankCode
         FROM references_catalog r
         JOIN products p ON p.id = r.product_id
@@ -199,53 +186,7 @@ export function createCatalog(database) {
       }));
     },
 
-    pendingReview() {
-      return database.prepare(`
-        SELECT r.id, r.product_id AS productId, p.name AS product,
-          r.presentation, r.equivalence_kg AS equivalenceKg,
-          r.created_at AS createdAt, u.name AS createdBy
-        FROM references_catalog r
-        JOIN products p ON p.id = r.product_id
-        LEFT JOIN users u ON u.id = r.created_by
-        WHERE r.created_from_mobile = 1 AND r.review_status = 'pending'
-        ORDER BY r.created_at
-      `).all();
-    },
-
-    reviewReference({ referenceId, decision, note, reviewerId }) {
-      if (!['approve', 'reject'].includes(decision)) {
-        return { status: 400, body: { message: 'Selecciona aprobar o rechazar.' } };
-      }
-      if (typeof note !== 'string' || note.trim().length > 500) {
-        return { status: 400, body: { message: 'La nota debe tener máximo 500 caracteres.' } };
-      }
-      const reference = database.prepare(`
-        SELECT id FROM references_catalog
-        WHERE id = ? AND created_from_mobile = 1 AND review_status = 'pending'
-      `).get(referenceId);
-      if (!reference) {
-        return { status: 404, body: { message: 'La presentación pendiente no existe.' } };
-      }
-      const reviewedAt = new Date().toISOString();
-      const update = database.prepare(`
-        UPDATE references_catalog
-        SET review_status = ?, active = ?, reviewed_at = ?, reviewer_id = ?, review_note = ?
-        WHERE id = ? AND review_status = 'pending'
-      `).run(
-        decision === 'approve' ? 'approved' : 'rejected',
-        decision === 'approve' ? 1 : 0,
-        reviewedAt,
-        reviewerId,
-        note.trim() || null,
-        referenceId,
-      );
-      if (update.changes !== 1) {
-        return { status: 409, body: { message: 'La presentación ya fue revisada.' } };
-      }
-      return { status: 200, body: { id: referenceId, decision, active: decision === 'approve' } };
-    },
-
-    createFromMobile(input, bankId, userId) {
+    createFromMobile(input, bankId) {
       const presentation = input.presentation.trim();
       const payload = JSON.stringify({
         productId: input.productId,
@@ -305,16 +246,14 @@ export function createCatalog(database) {
           presentation,
           equivalenceKg: input.equivalenceKg,
           createdFromMobile: true,
-          reviewStatus: 'pending',
           active: true,
           createdAt: new Date().toISOString(),
         };
         database.prepare(`
           INSERT INTO references_catalog
             (id, product_id, bank_id, command_id, payload_hash, command_response_json,
-              presentation, presentation_key, equivalence_kg, created_from_mobile,
-              review_status, created_by, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)
+              presentation, presentation_key, equivalence_kg, created_from_mobile, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         `).run(
           reference.id,
           reference.productId,
@@ -325,7 +264,6 @@ export function createCatalog(database) {
           reference.presentation,
           normalizeText(reference.presentation),
           reference.equivalenceKg,
-          userId,
           reference.createdAt,
         );
         database.exec('COMMIT');
