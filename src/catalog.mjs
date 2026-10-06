@@ -30,11 +30,20 @@ export function createCatalog(database) {
     CREATE TABLE IF NOT EXISTS references_catalog (
       id TEXT PRIMARY KEY,
       product_id TEXT NOT NULL REFERENCES products(id),
+      bank_id TEXT,
+      command_id TEXT,
+      payload_hash TEXT,
+      command_response_json TEXT,
       presentation TEXT NOT NULL,
       presentation_key TEXT NOT NULL,
       equivalence_kg REAL NOT NULL CHECK (equivalence_kg > 0),
       created_from_mobile INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
+      review_status TEXT NOT NULL DEFAULT 'approved',
+      reviewed_at TEXT,
+      reviewer_id TEXT,
+      review_note TEXT,
+      created_by TEXT,
       created_at TEXT NOT NULL,
       UNIQUE (product_id, presentation_key)
     );
@@ -44,13 +53,69 @@ export function createCatalog(database) {
     CREATE INDEX IF NOT EXISTS references_equivalence
       ON references_catalog(product_id, equivalence_kg);
 
-    CREATE TABLE IF NOT EXISTS mobile_commands (
-      bank_id TEXT NOT NULL,
-      command_id TEXT NOT NULL,
-      payload_hash TEXT NOT NULL,
-      response_json TEXT NOT NULL,
-      PRIMARY KEY (bank_id, command_id)
-    );
+  `);
+
+  const referenceColumns = new Set(
+    database.prepare('PRAGMA table_info(references_catalog)').all().map((column) => column.name),
+  );
+  for (const [name, declaration] of [
+    ['review_status', "TEXT NOT NULL DEFAULT 'approved'"],
+    ['reviewed_at', 'TEXT'],
+    ['reviewer_id', 'TEXT'],
+    ['review_note', 'TEXT'],
+    ['created_by', 'TEXT'],
+    ['bank_id', 'TEXT'],
+    ['command_id', 'TEXT'],
+    ['payload_hash', 'TEXT'],
+    ['command_response_json', 'TEXT'],
+  ]) {
+    if (!referenceColumns.has(name)) {
+      database.exec(`ALTER TABLE references_catalog ADD COLUMN ${name} ${declaration}`);
+    }
+  }
+
+  const legacyCommands = database.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mobile_commands'
+  `).get();
+  if (legacyCommands) {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      const commands = database.prepare(`
+        SELECT bank_id AS bankId, command_id AS commandId,
+          payload_hash AS payloadHash, response_json AS responseJson
+        FROM mobile_commands
+      `).all();
+      const migrateCommand = database.prepare(`
+        UPDATE references_catalog
+        SET bank_id = ?, command_id = ?, payload_hash = ?, command_response_json = ?
+        WHERE id = ?
+      `);
+      for (const command of commands) {
+        const response = JSON.parse(command.responseJson);
+        const migrated = migrateCommand.run(
+          command.bankId,
+          command.commandId,
+          command.payloadHash,
+          command.responseJson,
+          response.id,
+        );
+        if (migrated.changes !== 1) {
+          throw new Error(`No se pudo migrar el comando ${command.commandId}.`);
+        }
+      }
+      database.exec('DROP TABLE mobile_commands');
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS references_pending_review
+      ON references_catalog(review_status, created_from_mobile, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS references_command_key
+      ON references_catalog(bank_id, command_id) WHERE command_id IS NOT NULL;
   `);
 
   const count = database.prepare('SELECT COUNT(*) AS count FROM categories').get().count;
@@ -101,6 +166,7 @@ export function createCatalog(database) {
         SELECT r.id, r.product_id AS productId, p.name AS product,
           r.presentation, r.equivalence_kg AS equivalenceKg,
           r.created_from_mobile AS createdFromMobile, r.active,
+          r.review_status AS reviewStatus,
           c.name AS category, c.bank_code AS bankCode
         FROM references_catalog r
         JOIN products p ON p.id = r.product_id
@@ -133,7 +199,53 @@ export function createCatalog(database) {
       }));
     },
 
-    createFromMobile(input, bankId) {
+    pendingReview() {
+      return database.prepare(`
+        SELECT r.id, r.product_id AS productId, p.name AS product,
+          r.presentation, r.equivalence_kg AS equivalenceKg,
+          r.created_at AS createdAt, u.name AS createdBy
+        FROM references_catalog r
+        JOIN products p ON p.id = r.product_id
+        LEFT JOIN users u ON u.id = r.created_by
+        WHERE r.created_from_mobile = 1 AND r.review_status = 'pending'
+        ORDER BY r.created_at
+      `).all();
+    },
+
+    reviewReference({ referenceId, decision, note, reviewerId }) {
+      if (!['approve', 'reject'].includes(decision)) {
+        return { status: 400, body: { message: 'Selecciona aprobar o rechazar.' } };
+      }
+      if (typeof note !== 'string' || note.trim().length > 500) {
+        return { status: 400, body: { message: 'La nota debe tener máximo 500 caracteres.' } };
+      }
+      const reference = database.prepare(`
+        SELECT id FROM references_catalog
+        WHERE id = ? AND created_from_mobile = 1 AND review_status = 'pending'
+      `).get(referenceId);
+      if (!reference) {
+        return { status: 404, body: { message: 'La presentación pendiente no existe.' } };
+      }
+      const reviewedAt = new Date().toISOString();
+      const update = database.prepare(`
+        UPDATE references_catalog
+        SET review_status = ?, active = ?, reviewed_at = ?, reviewer_id = ?, review_note = ?
+        WHERE id = ? AND review_status = 'pending'
+      `).run(
+        decision === 'approve' ? 'approved' : 'rejected',
+        decision === 'approve' ? 1 : 0,
+        reviewedAt,
+        reviewerId,
+        note.trim() || null,
+        referenceId,
+      );
+      if (update.changes !== 1) {
+        return { status: 409, body: { message: 'La presentación ya fue revisada.' } };
+      }
+      return { status: 200, body: { id: referenceId, decision, active: decision === 'approve' } };
+    },
+
+    createFromMobile(input, bankId, userId) {
       const presentation = input.presentation.trim();
       const payload = JSON.stringify({
         productId: input.productId,
@@ -145,8 +257,8 @@ export function createCatalog(database) {
       database.exec('BEGIN IMMEDIATE');
       try {
         const previous = database.prepare(`
-          SELECT payload_hash AS payloadHash, response_json AS responseJson
-          FROM mobile_commands WHERE bank_id = ? AND command_id = ?
+          SELECT payload_hash AS payloadHash, command_response_json AS responseJson
+          FROM references_catalog WHERE bank_id = ? AND command_id = ?
         `).get(bankId, input.commandId);
 
         if (previous) {
@@ -193,26 +305,29 @@ export function createCatalog(database) {
           presentation,
           equivalenceKg: input.equivalenceKg,
           createdFromMobile: true,
+          reviewStatus: 'pending',
           active: true,
           createdAt: new Date().toISOString(),
         };
         database.prepare(`
           INSERT INTO references_catalog
-            (id, product_id, presentation, presentation_key, equivalence_kg,
-              created_from_mobile, created_at)
-          VALUES (?, ?, ?, ?, ?, 1, ?)
+            (id, product_id, bank_id, command_id, payload_hash, command_response_json,
+              presentation, presentation_key, equivalence_kg, created_from_mobile,
+              review_status, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)
         `).run(
           reference.id,
           reference.productId,
+          bankId,
+          input.commandId,
+          payloadHash,
+          JSON.stringify(reference),
           reference.presentation,
           normalizeText(reference.presentation),
           reference.equivalenceKg,
+          userId,
           reference.createdAt,
         );
-        database.prepare(`
-          INSERT INTO mobile_commands (bank_id, command_id, payload_hash, response_json)
-          VALUES (?, ?, ?, ?)
-        `).run(bankId, input.commandId, payloadHash, JSON.stringify(reference));
         database.exec('COMMIT');
         return { status: 201, body: reference };
       } catch (error) {

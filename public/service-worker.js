@@ -1,4 +1,4 @@
-const CACHE_NAME = 'catalogo-celular-v1';
+const CACHE_NAME = 'catalogo-celular-v2';
 const APP_FILES = ['/', '/styles.css', '/app.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#155b49">
-    <meta name="description" content="Busca presentaciones y crea una nueva desde el celular.">
+    <meta name="description" content="Catálogo de bodega con acceso por roles y modo sin conexión.">
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/styles.css">
     <title>Catálogo de bodega</title>
@@ -13,46 +13,114 @@
     <main class="page">
       <header class="header">
         <div>
-          <p class="eyebrow">BANCO DE ALIMENTOS · BODEGA</p>
+          <p class="eyebrow">CATÁLOGO LOCAL · BODEGA</p>
           <h1>Catálogo</h1>
-          <p class="subtitle">Busca una presentación o crea otra para un producto existente.</p>
+          <p class="subtitle">Busca presentaciones o crea una para un producto existente.</p>
         </div>
-        <span id="connection" class="connection">Conectando…</span>
+        <div class="header-tools">
+          <span id="connection" class="connection">Conectando…</span>
+          <span id="identity" class="identity" hidden></span>
+          <button id="logout-button" class="button small secondary" type="button" hidden>
+            Cerrar sesión
+          </button>
+        </div>
       </header>
 
-      <section class="panel" aria-labelledby="search-title">
-        <h2 id="search-title">Buscar presentación</h2>
-        <label for="search">Nombre, presentación o código del Banco</label>
-        <input id="search" type="search" placeholder="Ej.: arr, 500 g o CAT-01" autocomplete="off">
-        <p id="search-status" class="hint" aria-live="polite"></p>
-        <ul id="results" class="results"></ul>
-      </section>
-
-      <section class="panel" aria-labelledby="create-title">
-        <h2 id="create-title">Crear presentación</h2>
-        <p class="hint">Solo puedes elegir productos que ya existen en el catálogo.</p>
-        <form id="create-form">
-          <label for="product">Producto</label>
-          <select id="product" name="productId" required></select>
-
-          <label for="presentation">Nombre de la presentación</label>
-          <input id="presentation" name="presentation" maxlength="100" required
-            placeholder="Ej.: 480 g promocional">
-
-          <label for="equivalence">Equivalencia en kilos</label>
-          <input id="equivalence" name="equivalenceKg" type="number" min="0.001"
-            step="0.001" required placeholder="Ej.: 0.48">
-
-          <button id="suggest-button" class="button secondary" type="button">
-            Revisar presentaciones parecidas
-          </button>
-          <ul id="suggestions" class="suggestions" aria-live="polite"></ul>
-
-          <button id="create-button" class="button" type="submit">Crear presentación</button>
+      <section id="auth-panel" class="panel" aria-labelledby="auth-title">
+        <h2 id="auth-title">Iniciar sesión</h2>
+        <p id="auth-help" class="hint" aria-live="polite"></p>
+        <form id="setup-form" hidden>
+          <h3>Configura la cuenta administradora</h3>
+          <p class="hint">Esta cuenta será la primera administradora de la base de datos local.</p>
+          <label for="setup-name">Nombre</label>
+          <input id="setup-name" name="name" autocomplete="name" minlength="2" maxlength="100" required>
+          <label for="setup-email">Correo</label>
+          <input id="setup-email" name="email" type="email" autocomplete="email" maxlength="254" required>
+          <label for="setup-password">Contraseña (mínimo 12 caracteres)</label>
+          <input id="setup-password" name="password" type="password" autocomplete="new-password"
+            minlength="12" maxlength="128" required>
+          <button class="button" type="submit">Crear cuenta administradora</button>
         </form>
-        <p id="message" class="message" role="status" aria-live="polite"></p>
+        <form id="login-form">
+          <label for="login-email">Correo</label>
+          <input id="login-email" name="email" type="email" autocomplete="username" required>
+          <label for="login-password">Contraseña</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <button class="button" type="submit">Iniciar sesión</button>
+        </form>
+        <p id="auth-message" class="message" role="status" aria-live="polite"></p>
       </section>
-      <footer>Las altas desde el celular quedan marcadas para revisión de coordinación.</footer>
+
+      <div id="workspace" hidden>
+        <p id="offline-notice" class="notice" role="status" hidden>
+          Sin conexión al servidor. Puedes consultar el catálogo y dejar altas en cola; se enviarán al reconectar.
+        </p>
+
+        <section class="panel" aria-labelledby="search-title">
+          <h2 id="search-title">Buscar presentación</h2>
+          <label for="search">Nombre, presentación o código del Banco</label>
+          <input id="search" type="search" placeholder="Ej.: arr, 500 g o CAT-01" autocomplete="off">
+          <p id="search-status" class="hint" aria-live="polite"></p>
+          <ul id="results" class="results"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="create-title">
+          <h2 id="create-title">Crear presentación</h2>
+          <p class="hint">Solo puedes elegir productos que ya existen en el catálogo.</p>
+          <form id="create-form">
+            <label for="product">Producto</label>
+            <select id="product" name="productId" required></select>
+            <label for="presentation">Nombre de la presentación</label>
+            <input id="presentation" name="presentation" maxlength="100" required
+              placeholder="Ej.: 480 g promocional">
+            <label for="equivalence">Equivalencia en kilos</label>
+            <input id="equivalence" name="equivalenceKg" type="number" min="0.001"
+              step="0.001" required placeholder="Ej.: 0.48">
+            <button id="suggest-button" class="button secondary" type="button">
+              Revisar presentaciones parecidas
+            </button>
+            <ul id="suggestions" class="suggestions" aria-live="polite"></ul>
+            <button id="create-button" class="button" type="submit">Crear presentación</button>
+          </form>
+          <p id="message" class="message" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="queue-panel" class="panel" aria-labelledby="queue-title" hidden>
+          <h2 id="queue-title">Altas por sincronizar</h2>
+          <p class="hint">Los comandos conservan su identificador para que un reintento no duplique la presentación.</p>
+          <ul id="queue-list" class="results"></ul>
+        </section>
+
+        <section id="review-panel" class="panel" aria-labelledby="review-title" hidden>
+          <h2 id="review-title">Revisión de coordinación</h2>
+          <p class="hint">Las presentaciones nuevas ya están disponibles. Revisa y aprueba o desactiva cada alta.</p>
+          <button id="review-refresh" class="button secondary" type="button">Actualizar pendientes</button>
+          <ul id="review-list" class="results"></ul>
+        </section>
+
+        <section id="users-panel" class="panel" aria-labelledby="users-title" hidden>
+          <h2 id="users-title">Cuentas del banco</h2>
+          <form id="user-form">
+            <label for="user-name">Nombre</label>
+            <input id="user-name" name="name" minlength="2" maxlength="100" required>
+            <label for="user-email">Correo</label>
+            <input id="user-email" name="email" type="email" maxlength="254" required>
+            <label for="user-role">Rol</label>
+            <select id="user-role" name="role" required>
+              <option value="operario_bodega">Operario de bodega</option>
+              <option value="coordinacion">Coordinación</option>
+              <option value="admin_banco">Administración</option>
+            </select>
+            <label for="user-password">Contraseña temporal (mínimo 12 caracteres)</label>
+            <input id="user-password" name="password" type="password" minlength="12" maxlength="128" required>
+            <button class="button" type="submit">Crear cuenta</button>
+          </form>
+          <p id="user-message" class="message" role="status" aria-live="polite"></p>
+          <ul id="user-list" class="results"></ul>
+        </section>
+      </div>
+
+      <footer>Los datos de ejemplo y las cuentas se guardan en la base SQLite local de esta instalación.</footer>
     </main>
     <script type="module" src="/app.js"></script>
   </body>
