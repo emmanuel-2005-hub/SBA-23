@@ -16,6 +16,14 @@ La base persistente se crea en `.data/catalogo.sqlite`. Incluye datos sintético
 
 Por seguridad, el servidor solo escucha en `127.0.0.1` de forma predeterminada. Para probar desde un teléfono en una red local de confianza, configura `HOST=0.0.0.0` y permite el puerto 3000 solo en esa red; configura la primera cuenta desde el equipo servidor. No uses HTTP en una red pública ni introduzcas contraseñas reales fuera de un despliegue HTTPS protegido.
 
+Puedes elegir otra ruta de base de datos y puerto con variables de entorno de PowerShell:
+
+```powershell
+$env:DATABASE_PATH = "C:\datos\catalogo.sqlite"
+$env:PORT = "3000"
+npm start
+```
+
 ## Funciones
 
 - Inicio de sesión local con contraseñas derivadas mediante scrypt, sesiones aleatorias almacenadas como hashes y cookies `HttpOnly`/`SameSite=Strict`. Las mutaciones requieren token CSRF.
