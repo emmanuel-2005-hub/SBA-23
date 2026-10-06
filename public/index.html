@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#155b49">
+    <meta name="description" content="Busca presentaciones y crea una nueva desde el celular.">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/styles.css">
+    <title>Catálogo de bodega</title>
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <div>
+          <p class="eyebrow">BANCO DE ALIMENTOS · BODEGA</p>
+          <h1>Catálogo</h1>
+          <p class="subtitle">Busca una presentación o crea otra para un producto existente.</p>
+        </div>
+        <span id="connection" class="connection">Conectando…</span>
+      </header>
+
+      <section class="panel" aria-labelledby="search-title">
+        <h2 id="search-title">Buscar presentación</h2>
+        <label for="search">Nombre, presentación o código del Banco</label>
+        <input id="search" type="search" placeholder="Ej.: arr, 500 g o CAT-01" autocomplete="off">
+        <p id="search-status" class="hint" aria-live="polite"></p>
+        <ul id="results" class="results"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="create-title">
+        <h2 id="create-title">Crear presentación</h2>
+        <p class="hint">Solo puedes elegir productos que ya existen en el catálogo.</p>
+        <form id="create-form">
+          <label for="product">Producto</label>
+          <select id="product" name="productId" required></select>
+
+          <label for="presentation">Nombre de la presentación</label>
+          <input id="presentation" name="presentation" maxlength="100" required
+            placeholder="Ej.: 480 g promocional">
+
+          <label for="equivalence">Equivalencia en kilos</label>
+          <input id="equivalence" name="equivalenceKg" type="number" min="0.001"
+            step="0.001" required placeholder="Ej.: 0.48">
+
+          <button id="suggest-button" class="button secondary" type="button">
+            Revisar presentaciones parecidas
+          </button>
+          <ul id="suggestions" class="suggestions" aria-live="polite"></ul>
+
+          <button id="create-button" class="button" type="submit">Crear presentación</button>
+        </form>
+        <p id="message" class="message" role="status" aria-live="polite"></p>
+      </section>
+      <footer>Las altas desde el celular quedan marcadas para revisión de coordinación.</footer>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

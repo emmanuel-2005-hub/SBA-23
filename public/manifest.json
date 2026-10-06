@@ -1,0 +1,8 @@
+{
+  "name": "Catálogo de bodega",
+  "short_name": "Catálogo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f6f4",
+  "theme_color": "#155b49"
+}
